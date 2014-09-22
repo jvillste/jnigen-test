@@ -10,3 +10,5 @@ pom.xml.asc
 *.class
 /.lein-*
 /.nrepl-port
+/obj/
+/package/

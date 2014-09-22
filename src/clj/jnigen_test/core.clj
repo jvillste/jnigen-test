@@ -1,11 +1,14 @@
 (ns jnigen-test.core
-  (:require [clojure.java.shell :as shell])
-  (:import [jnigen.test Example Loader]
-           [jnigen-test.build :as build]))
+  (:require [clojure.java.shell :as shell]
+            [jnigen-test.build :as build])
+  (:import [nanovg NanoVG]
+           [com.badlogic.gdx.jnigen JniGenSharedLibraryLoader]))
+
+(defn load-nanovg []
+  (.load (JniGenSharedLibraryLoader.) "nanovg"))
 
 
 (defn start []
-  (build)
-  (load)
-  (Loader/load)
-  (Example/add 2 2))
+  
+  (load-nanovg)
+  (NanoVG/run))
