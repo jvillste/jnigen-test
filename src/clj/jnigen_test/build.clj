@@ -10,6 +10,12 @@
            [java.io File])
   (:use clojure.test))
 
+(defn reset-folder [folder-name]
+  (when (.exists (File. folder-name))
+    (shell/sh "rm" "-r" folder-name))
+
+  (shell/sh "mkdir" folder-name))
+
 (defn deploy [jar-file-name group artifact version]
   (shell/sh "mvn"
             "install:install-file"
@@ -23,6 +29,7 @@
   (BuildTarget/newDefaultTarget com.badlogic.gdx.jnigen.BuildTarget$TargetOs/MacOsX true))
 
 (defn generate-jni [jni-folder sources]
+  (reset-folder jni-folder)
   (let [jnigen (NativeCodeGenerator.)
         ant-script-generator (AntScriptGenerator.)]
 
@@ -50,7 +57,7 @@
       (throw (Exception. err)))
     shell-return-value))
 
-(defn compile-native [compiler source-file-name jni-folder object-folder include-folders]
+(defn compile-native [compiler source-file-name object-folder include-folders]
 
 
   (let [include-directives (map (fn [folder] (str "-I" folder))
@@ -71,11 +78,7 @@
                     [source-file-name
                      "-o" (str object-folder "/" (source-file-name-to-object-file-name source-file-name))])))))
 
-(defn reset-folder [folder-name]
-  (when (.exists (File. folder-name))
-    (shell/sh "rm" "-r" folder-name))
 
-  (shell/sh "mkdir" folder-name))
 
 (defn link-shared-library [library-file-name linkder-parameters object-file-names]
   (println "linking " object-file-names)
@@ -107,8 +110,27 @@
 (defn compile-java []
   (throw-on-shell-error (shell/sh "lein" "javac")))
 
-(defn package []
-  (reset-folder "package"))
+
+(defn make-jar [package-folder jar-file-name]
+  (shell/sh "cp" "-r" "target/classes/" (str package-folder "/"))
+  (shell/sh "rm" "-r" (str package-folder "/META-INF"))
+  (shell/sh "zip" "-r" jar-file-name "." "-i" "*" :dir package-folder))
+
+(defn compile [object-folder source-file-names header-folders]
+  (reset-folder object-folder)
+  (doseq [source-file-name source-file-names]
+    (compile-native (if (.endsWith source-file-name ".cpp") "g++" "gcc")
+                    source-file-name
+                    object-folder
+                    header-folders)))
+
+(defn link [package-folder linker-parameters object-file-names]
+  (reset-folder package-folder)
+  (let [native-folder "/native/macosx/x86_64"]
+    (shell/sh "mkdir" "-p" (str package-folder native-folder))
+    (link-shared-library (str package-folder native-folder "/libnanovg.dylib")
+                         linker-parameters
+                         object-file-names)))
 
 (defn start []
   (let [object-folder "obj"
@@ -128,31 +150,22 @@
                                source-file-names)]
 
     (compile-java)
-
-    (reset-folder jni-folder)
+    
     (generate-jni jni-folder ["**/NanoVG.java"])
 
-    (reset-folder object-folder)
-    (doseq [source-file-name source-file-names]
-      (compile-native (if (.endsWith source-file-name ".cpp") "g++" "gcc") source-file-name jni-folder object-folder
-                      (concat jni-header-folders ["src/c" "src/c/nanovg"])))
+    (compile object-folder
+             source-file-names
+             (concat jni-header-folders ["src/c" "src/c/nanovg"]))
 
-    (reset-folder package-folder)
-    (let [native-folder "/native/macosx/x86_64"]
-      (shell/sh "mkdir" "-p" (str package-folder native-folder))
-      (link-shared-library (str package-folder native-folder "/libnanovg.dylib")
-                           linker-parameters
-                           object-file-names))
+    (link package-folder
+          linker-parameters
+          object-file-names)
 
-    (shell/sh "cp" "-r" "target/classes/" (str package-folder "/"))
-    (shell/sh "rm" "-r" (str package-folder "/META-INF"))
+    (make-jar package-folder jar-file-name)
 
-    (shell/sh "zip" "-r" jar-file-name "." "-i" "*" :dir package-folder)
     (deploy (str package-folder "/" jar-file-name) "org.clojars.jvillste" "nanovg" "1.0.0")
 
-
-    (shell/sh "cp" "-r" (str package-folder "/native") "target/")
-    (shell/sh "cp" "-r" "package/native" "target/")
+    #_(shell/sh "cp" "-r" (str package-folder "/native") "target/")
 
     #_(build-jni jni-folder)
     #_(deploy "libs/native-lib-natives.jar" "org.clojars.jvillste2" "nanovg" "1.0.0")))

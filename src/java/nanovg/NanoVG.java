@@ -73,7 +73,7 @@ public class NanoVG {
 
                                                    float x = 100;
                                                    float y = 100;
-                                                   float width = 100;
+                                                   float width = 200;
                                                    int i;
 
                                                    nvgSave(vg);
