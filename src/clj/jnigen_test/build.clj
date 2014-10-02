@@ -137,14 +137,13 @@
         package-folder "package"
         jni-folder "jni"
         jar-file-name "nanovg.jar"
-        source-file-names [#_"src/c/nanovg_wrapper.c"
-                           "src/c/nanovg/nanovg.c"
+        source-file-names ["src/c/nanovg/nanovg.c"
                            (str jni-folder "/memcpy_wrap.c")
                            (str jni-folder "/nanovg.NanoVG.cpp")]
         jni-header-folders [jni-folder
                             (str jni-folder "/jni-headers")
                             (str jni-folder "/jni-headers/mac")]
-        linker-parameters [#_"-lglfw3" "-framework" "OpenGL" "-framework" "Cocoa" "-framework" "IOKit" "-framework" "CoreVideo"]
+        linker-parameters ["-framework" "OpenGL" "-framework" "Cocoa" "-framework" "IOKit" "-framework" "CoreVideo"]
         object-file-names (map (fn [source-file-name]
                                  (str object-folder "/" (source-file-name-to-object-file-name source-file-name)))
                                source-file-names)]

@@ -206,17 +206,17 @@
                 (NanoVG/init))]
 
       (render window gl
-              (let [{:keys [width height]} (size gl)])
-              (.glClearColor gl 0 0 0 1)
-              (.glClear gl GL2/GL_COLOR_BUFFER_BIT)
-              (doto nvg 
-                (NanoVG/beginFrame width height)
-                (NanoVG/run)
-                (NanoVG/fillColor (char 255) (char 0) (char 0) (char 255))
-                (NanoVG/beginPath)
-                (NanoVG/rect 100 100 100 100)
-                (NanoVG/fill)
-                (NanoVG/endFrame))))
+              (let [{:keys [width height]} (size gl)]
+                (.glClearColor gl 0 0 0 1)
+                (.glClear gl GL2/GL_COLOR_BUFFER_BIT)
+                (doto nvg
+                  (NanoVG/beginFrame width height)
+                  (NanoVG/run)
+                  (NanoVG/fillColor (char 255) (char 0) (char 0) (char 255))
+                  (NanoVG/beginPath)
+                  (NanoVG/rect 100 100 100 100)
+                  (NanoVG/fill)
+                  (NanoVG/endFrame)))))
 
     #_(Thread/sleep 2000)
     #_(close window)))
