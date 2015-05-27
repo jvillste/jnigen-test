@@ -5,7 +5,11 @@ public class NanoVG {
 
 
       #include <stdio.h>
-      #include <OpenGL/gl3.h>
+
+//      #include <OpenGL/gl3.h>
+//      #include <GL/gl.h>
+      #include <GLES3/gl3.h>
+
       #include "nanovg.h"
       #define NANOVG_GL3_IMPLEMENTATION
       #include "nanovg_gl.h"

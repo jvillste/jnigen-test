@@ -25,19 +25,19 @@
             (str "-Dversion=" version)
             "-Dpackaging=jar"))
 
-(defn default-mac-target []
-  (BuildTarget/newDefaultTarget com.badlogic.gdx.jnigen.BuildTarget$TargetOs/MacOsX true))
-
 (defn generate-jni [jni-folder sources]
   (reset-folder jni-folder)
   (let [jnigen (NativeCodeGenerator.)
         ant-script-generator (AntScriptGenerator.)]
 
     (.generate jnigen "src/java" "target/classes" jni-folder (into-array String sources) nil)
-    (.generate ant-script-generator (BuildConfig. "native-lib") (into-array BuildTarget [(default-mac-target)]))))
+    (.generate ant-script-generator (BuildConfig. "native-lib") (into-array BuildTarget
+                                                                            [(BuildTarget/newDefaultTarget com.badlogic.gdx.jnigen.BuildTarget$TargetOs/MacOsX true)
+                                                                             (BuildTarget/newDefaultTarget com.badlogic.gdx.jnigen.BuildTarget$TargetOs/Linux false)]))))
 
 (defn build-jni [jni-folder]
   (BuildExecutor/executeAnt (str jni-folder "/build-macosx64.xml") "-v -Dhas-compiler=true clean postcompile")
+  (BuildExecutor/executeAnt (str jni-folder "/build-linux32.xml") "-v -Dhas-compiler=true clean postcompile")
   (BuildExecutor/executeAnt (str jni-folder "/build.xml") "-v pack-natives"))
 
 (defn source-file-name-to-object-file-name [source-file-name]
@@ -63,49 +63,78 @@
   (let [include-directives (map (fn [folder] (str "-I" folder))
                                 include-folders)]
 
+    ;; mac
+    #_(throw-on-shell-error
+       (apply shell/sh compiler
+              "-c"
+              "-Wall"
+              "-v"
+              "-O2"
+              "-arch" "x86_64"
+              "-DFIXED_POINT"
+              "-fPIC"
+              "-fmessage-length=0"
+              "-mmacosx-version-min=10.5"
+              (concat include-directives
+                      [source-file-name
+                       "-o" (str object-folder "/" (source-file-name-to-object-file-name source-file-name))])))
+
+    ;; linux
     (throw-on-shell-error
      (apply shell/sh compiler
             "-c"
             "-Wall"
             "-v"
             "-O2"
-            "-arch" "x86_64"
+            ;; "-arch" "x86_64"
             "-DFIXED_POINT"
             "-fPIC"
             "-fmessage-length=0"
-            "-mmacosx-version-min=10.5"
+            ;; "-mmacosx-version-min=10.5"
             (concat include-directives
                     [source-file-name
                      "-o" (str object-folder "/" (source-file-name-to-object-file-name source-file-name))])))))
 
 
 
-(defn link-shared-library [library-file-name linkder-parameters object-file-names]
+(defn link-shared-library [library-file-name linker-parameters object-file-names]
   (println "linking " object-file-names)
 
+  ;; mac
+  #_(println (throw-on-shell-error
+              (apply shell/sh
+                     "g++"
+                     "-v"
+                     "-shared"
+                     "-arch" "x86_64"
+                     "-mmacosx-version-min=10.5"
+                     (concat linker-parameters
+                             ["-o" library-file-name]
+                             object-file-names))))
+  ;; linux
   (println (throw-on-shell-error
             (apply shell/sh
                    "g++"
                    "-v"
                    "-shared"
-                   "-arch" "x86_64"
-                   "-mmacosx-version-min=10.5"
-                   (concat linkder-parameters
+                   ;;               "-arch" "x86_64"
+                   ;;               "-mmacosx-version-min=10.5"
+                   (concat linker-parameters
                            ["-o" library-file-name]
                            object-file-names)))))
 
 (defn create-pom
   ([group-id artifact-id version]
-     (create-pom group-id artifact-id version artifact-id "" ""))
+   (create-pom group-id artifact-id version artifact-id "" ""))
 
   ([group-id artifact-id version name description url]
-     (-> (slurp "pom-template.xml")
-         (string/replace "group-id-placeholder" group-id)
-         (string/replace "artifact-id-placeholder" artifact-id )
-         (string/replace "version-placeholder" version)
-         (string/replace "name-placeholder" name)
-         (string/replace "description-placeholder" description)
-         (string/replace "url-placeholder" url))))
+   (-> (slurp "pom-template.xml")
+       (string/replace "group-id-placeholder" group-id)
+       (string/replace "artifact-id-placeholder" artifact-id )
+       (string/replace "version-placeholder" version)
+       (string/replace "name-placeholder" name)
+       (string/replace "description-placeholder" description)
+       (string/replace "url-placeholder" url))))
 
 (defn compile-java []
   (throw-on-shell-error (shell/sh "lein" "javac")))
@@ -124,13 +153,12 @@
                     object-folder
                     header-folders)))
 
-(defn link [package-folder linker-parameters object-file-names]
+(defn link [package-folder linker-parameters object-file-names native-folder shared-library-file-name]
   (reset-folder package-folder)
-  (let [native-folder "/native/macosx/x86_64"]
-    (shell/sh "mkdir" "-p" (str package-folder native-folder))
-    (link-shared-library (str package-folder native-folder "/libnanovg.dylib")
-                         linker-parameters
-                         object-file-names)))
+  (shell/sh "mkdir" "-p" (str package-folder native-folder))
+  (link-shared-library (str package-folder native-folder "/" shared-library-file-name)
+                       linker-parameters
+                       object-file-names))
 
 (defn start []
   (let [object-folder "obj"
@@ -141,9 +169,7 @@
                            (str jni-folder "/memcpy_wrap.c")
                            (str jni-folder "/nanovg.NanoVG.cpp")]
         jni-header-folders [jni-folder
-                            (str jni-folder "/jni-headers")
-                            (str jni-folder "/jni-headers/mac")]
-        linker-parameters ["-framework" "OpenGL" "-framework" "Cocoa" "-framework" "IOKit" "-framework" "CoreVideo"]
+                            (str jni-folder "/jni-headers")]
         object-file-names (map (fn [source-file-name]
                                  (str object-folder "/" (source-file-name-to-object-file-name source-file-name)))
                                source-file-names)]
@@ -152,13 +178,27 @@
     
     (generate-jni jni-folder ["**/NanoVG.java"])
 
+    #_(compile object-folder
+               source-file-names
+               (concat jni-header-folders [(str jni-folder "/jni-headers/mac") "src/c" "src/c/nanovg"]))
+
     (compile object-folder
              source-file-names
-             (concat jni-header-folders ["src/c" "src/c/nanovg"]))
+             (concat jni-header-folders [(str jni-folder "/jni-headers/linux") "src/c" "src/c/nanovg"]))
 
+    ;; mac
+    #_(link package-folder
+            ["-framework" "OpenGL" "-framework" "Cocoa" "-framework" "IOKit" "-framework" "CoreVideo"]
+            object-file-names
+            "/native/macosx/x86_64"
+            "libnanovg.dylib")
+
+    ;; linux 32
     (link package-folder
-          linker-parameters
-          object-file-names)
+          ["-lGL" "-lGLU" "-lm" "-lGLEW"]
+          object-file-names
+          "/native/linux/x86"
+          "libnanovg.so")
 
     (make-jar package-folder jar-file-name)
 
